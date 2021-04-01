@@ -1,0 +1,86 @@
+version: '3.6'
+services:
+
+  traefik:
+    image: traefik:v2.4
+    restart: unless-stopped
+    networks:
+      - t_nwk
+    command:
+      - "--configFile=/config/traefik_static.yml"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik_files/config:/config/:ro
+      # Change password with: 'htpasswd -B -C 10 .htpasswd admin'
+      - ./traefik_files/.htpasswd:/.htpasswd:ro
+      - ./traefik_files/cert:/cert/:ro
+      # Note: the following share is a bad practise. Only here for easier tests.
+      - ./pki:/pki/:ro
+    labels:
+      - "traefik.enable=true"
+      # Middleware config: Authentications
+      - "traefik.http.middlewares.mw-auth-htpasswd.basicauth.usersfile=/.htpasswd"
+      - "traefik.http.middlewares.mw-auth-htpasswd.basicauth.realm=localhost"
+      # Dashboard
+      - "traefik.http.routers.traefik-router.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.traefik-router.entrypoints=web"
+#      - "traefik.http.routers.traefik-router.entrypoints=websecure"
+#      - "traefik.http.routers.traefik-router.tls=true"
+#      - "traefik.http.routers.traefik-router.tls.options=modern@file"
+#      - "traefik.http.routers.traefik-router.tls.certresolver=letsenc"
+      - "traefik.http.routers.traefik-router.service=api@internal"
+#      - "traefik.http.routers.traefik-router.middlewares=mw-auth-htpasswd@docker"
+      # HTTP -> HTTPS redirection
+#      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+#      - "traefik.http.routers.https-r.rule=hostregexp(`{host:.+}`)"
+#      - "traefik.http.routers.https-r.entrypoints=web"
+#      - "traefik.http.routers.https-r.middlewares=redirect-to-https"
+      # Middleware config: Add mTLS information into header
+      - "traefik.http.middlewares.mw-cert.passtlsclientcert.pem=true"
+      - "traefik.http.middlewares.mw-cert.passtlsclientcert.info.sans=true"
+      - "traefik.http.middlewares.mw-cert.passtlsclientcert.info.subject.commonname=true"
+      - "traefik.http.middlewares.mw-cert.passtlsclientcert.info.subject.serialnumber=true"
+
+
+  whoami:
+    image: emilevauge/whoami
+    networks:
+      - t_nwk
+    labels:
+     - "traefik.enable=true"
+     # > 'tls.localhost' section
+     - "traefik.http.routers.whoami-tls.rule=Host(`tls.localhost`)"
+     - "traefik.http.routers.whoami-tls.entryPoints=websecure"
+     - "traefik.http.routers.whoami-tls.tls=true"
+      # > 'mtls.localhost' section
+     - "traefik.http.routers.whoami-mtls.rule=Host(`mtls.localhost`)"
+     - "traefik.http.routers.whoami-mtls.entryPoints=websecure"
+     - "traefik.http.routers.whoami-mtls.tls=true"
+     - "traefik.http.routers.whoami-mtls.tls.options=mtls-required@file"
+     - "traefik.http.routers.whoami-mtls.middlewares=mw-cert@docker"
+
+  api-mtls:
+    image: python:3.9
+    command: bash -c "python3 -m pip install fastapi uvicorn && python3 -m uvicorn main:app --host 0.0.0.0 --reload"
+    networks:
+      - t_nwk
+    volumes:
+      - ./api.py:/main.py:ro
+    expose:
+      - "8000"
+    labels:
+     - "traefik.enable=true"
+      # > 'api.mtls.localhost' section
+     - "traefik.http.routers.api-mtls.rule=Host(`api.mtls.localhost`)"
+     - "traefik.http.routers.api-mtls.entryPoints=websecure"
+     - "traefik.http.routers.api-mtls.tls=true"
+     - "traefik.http.routers.api-mtls.tls.options=mtls-required@file"
+     - "traefik.http.routers.api-mtls.middlewares=mw-cert@docker"
+
+networks:
+  t_nwk:
+    external:
+      name: traefik_network

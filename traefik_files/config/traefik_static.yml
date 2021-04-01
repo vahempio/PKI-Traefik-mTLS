@@ -1,0 +1,42 @@
+# Disable global misc flags
+global:
+  checkNewVersion: true
+  sendAnonymousUsage: false
+
+# Log level, can be changed to DEBUG or INFO
+log:
+  level: INFO
+
+# Connection logs, to be analysed by Fail2Ban
+#accessLog:
+#  filepath: /var/log/access.log
+
+# API & Dashboard
+api:
+  dashboard: true
+
+# Container configuration
+providers:
+  docker:
+    exposedByDefault: false
+    network: traefik_network
+  file:
+    directory: /config/dyn
+    watch: true
+
+# Listen to these entry points
+entrypoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+# HTTPS challenge with Letsencrypt
+#certificatesResolvers:
+#  letsenc:
+#    acme:
+#      httpchallenge:
+#        entrypoint: web
+#      caServer: https://acme-v02.api.letsencrypt.org/directory
+#      email: "mail@localhost"
+#      storage: /letsencrypt/acme.json
